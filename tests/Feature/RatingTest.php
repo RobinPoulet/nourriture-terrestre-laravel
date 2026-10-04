@@ -6,7 +6,6 @@ use App\Models\Dish;
 use App\Models\Menu;
 use App\Models\Rating;
 use App\Models\User;
-use App\Services\DeviceAuth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
@@ -20,8 +19,6 @@ class RatingTest extends TestCase
     /** @var Dish[] */
     private array $dishes;
 
-    private string $token;
-
     private User $user;
 
     protected function setUp(): void
@@ -30,8 +27,7 @@ class RatingTest extends TestCase
         Carbon::setTestNow('2026-10-05 10:00');
         [$this->menu, $this->dishes] = OrderTest::createMenu();
 
-        $this->token = str_repeat('c', 64);
-        $this->user = User::query()->create(['name' => 'Alice', 'creation_date' => '2026-01-01', 'cookie_hash' => hash('sha256', $this->token)]);
+        $this->user = OrderTest::createUser('Alice');
         $this->user->orders()->create()->dishes()->attach([
             $this->dishes[0]->id => ['quantity' => 1],
             $this->dishes[1]->id => ['quantity' => 0],
@@ -48,9 +44,7 @@ class RatingTest extends TestCase
 
     private function vote(int $dishId, int $rating)
     {
-        return $this->withCredentials()
-            ->withUnencryptedCookie(DeviceAuth::COOKIE_NAME, $this->token)
-            ->postJson('/vote', ['dish_id' => $dishId, 'rating' => $rating]);
+        return $this->actingAs($this->user)->postJson('/vote', ['dish_id' => $dishId, 'rating' => $rating]);
     }
 
     public function test_user_can_vote_once_for_an_ordered_dish(): void
@@ -66,10 +60,10 @@ class RatingTest extends TestCase
         $this->vote($this->dishes[1]->id, 4)->assertExactJson(['error' => 'Ce plat ne fait pas partie de votre commande']);
     }
 
-    public function test_vote_is_refused_outside_window_and_for_unknown_device(): void
+    public function test_vote_is_refused_outside_window_and_for_guest(): void
     {
         $this->postJson('/vote', ['dish_id' => $this->dishes[0]->id, 'rating' => 4])
-            ->assertExactJson(['error' => 'Utilisateur non identifié']);
+            ->assertExactJson(['error' => 'Connecte-toi pour voter']);
 
         Carbon::setTestNow('2026-10-05 12:00');
         $this->vote($this->dishes[0]->id, 4)->assertExactJson(['error' => 'La fenêtre de vote est fermée']);
@@ -79,7 +73,7 @@ class RatingTest extends TestCase
     {
         $this->vote($this->dishes[0]->id, 5);
 
-        $this->withUnencryptedCookie(DeviceAuth::COOKIE_NAME, $this->token)
+        $this->actingAs($this->user)
             ->get('/ranking')
             ->assertOk()
             ->assertSee('Vote ouvert')

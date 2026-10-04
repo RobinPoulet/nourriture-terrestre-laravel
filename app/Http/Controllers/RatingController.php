@@ -7,17 +7,17 @@ use App\Models\Menu;
 use App\Models\Order;
 use App\Models\Rating;
 use App\Models\Setting;
-use App\Services\DeviceAuth;
 use App\Services\MenuService;
 use App\Support\MenuCalendar;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 use Throwable;
 
 class RatingController extends Controller
 {
-    public function __construct(private readonly MenuService $menus, private readonly DeviceAuth $device) {}
+    public function __construct(private readonly MenuService $menus) {}
 
     /**
      * Classement des plats de la semaine et vote
@@ -25,7 +25,7 @@ class RatingController extends Controller
     public function index(): View
     {
         $menu = $this->menus->current();
-        $user = $this->device->user();
+        $user = Auth::user();
         $ranking = Rating::rankingForMenu($menu->id);
 
         $userOrderedDishIds = [];
@@ -72,9 +72,9 @@ class RatingController extends Controller
      */
     public function vote(Request $request): JsonResponse
     {
-        $user = $this->device->user();
+        $user = Auth::user();
         if (! $user) {
-            return $this->error('Utilisateur non identifié');
+            return $this->error('Connecte-toi pour voter');
         }
 
         $dishId = (int) $request->input('dish_id', 0);

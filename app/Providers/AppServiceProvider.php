@@ -2,7 +2,6 @@
 
 namespace App\Providers;
 
-use App\Services\DeviceAuth;
 use App\Services\MenuService;
 use App\Services\SmsSender;
 use App\Services\WordPressClient;
@@ -25,7 +24,6 @@ class AppServiceProvider extends ServiceProvider
 
         // Résolus une fois par requête
         $this->app->scoped(MenuService::class);
-        $this->app->scoped(DeviceAuth::class);
     }
 
     /**

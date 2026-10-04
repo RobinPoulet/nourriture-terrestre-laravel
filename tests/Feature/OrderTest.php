@@ -6,7 +6,6 @@ use App\Models\Dish;
 use App\Models\Menu;
 use App\Models\Order;
 use App\Models\User;
-use App\Services\DeviceAuth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
@@ -63,30 +62,53 @@ class OrderTest extends TestCase
         return [$menu, $dishes];
     }
 
+    /**
+     * Utilisateur avec un compte activé (email + mot de passe)
+     */
+    public static function createUser(string $name, bool $isAdmin = false): User
+    {
+        return User::query()->create([
+            'name' => $name,
+            'email' => strtolower($name).'@example.com',
+            'password' => 'mot-de-passe-solide',
+            'is_admin' => $isAdmin,
+            'creation_date' => '2026-01-01',
+        ]);
+    }
+
     public function test_pages_render(): void
     {
-        foreach (['/', '/commande', '/display-orders', '/ranking', '/classement', '/admin/login'] as $uri) {
+        foreach (['/', '/display-orders', '/ranking', '/classement', '/login', '/forgot-password'] as $uri) {
             $this->get($uri)->assertOk();
         }
 
         $this->get('/')->assertSee('lundi 5 octobre 2026')->assertSee('Curry de légumes');
-        $this->get('/commande')->assertSee('Passe ta commande');
     }
 
-    public function test_order_is_stored_and_device_remembered(): void
+    public function test_order_form_requires_login(): void
     {
-        $user = User::query()->create(['name' => 'Alice', 'creation_date' => '2026-01-01']);
+        $this->get('/commande')->assertRedirect(route('login'));
 
-        $response = $this->post('/create-order', [
-            'user' => $user->id,
+        $this->actingAs(self::createUser('Alice'))
+            ->get('/commande')
+            ->assertOk()
+            ->assertSee('Passe ta commande')
+            ->assertSee('Alice');
+    }
+
+    public function test_order_is_stored_for_the_logged_in_user(): void
+    {
+        $alice = self::createUser('Alice');
+
+        $response = $this->actingAs($alice)->post('/create-order', [
             'dishes' => [$this->dishes[0]->id => '2', $this->dishes[1]->id => '0', $this->dishes[2]->id => '1'],
             'perso' => "Sans sel, s'il te plaît",
         ]);
 
-        $response->assertRedirect(route('orders.index'))->assertSessionHas('success');
-        $response->assertCookie(DeviceAuth::COOKIE_NAME, null, false);
+        $response->assertRedirect(route('orders.index'))->assertSessionHas('success', 'Ta commande a bien été enregistrée Alice');
 
         $order = Order::query()->sole();
+        $this->assertSame($alice->id, (int) $order->user_id);
         $this->assertSame("Sans sel, s'il te plaît", $order->perso);
         $this->assertSame('2026-10-05', $order->creation_date);
         $this->assertSame(
@@ -94,72 +116,50 @@ class OrderTest extends TestCase
             $order->quantitiesByDish(),
         );
 
-        $token = $response->getCookie(DeviceAuth::COOKIE_NAME, false)->getValue();
-        $this->assertSame(hash('sha256', $token), $user->fresh()->cookie_hash);
-
-        $this->withUnencryptedCookie(DeviceAuth::COOKIE_NAME, $token)
-            ->get('/display-orders')
+        $this->get('/display-orders')
             ->assertOk()
             ->assertSee('Moi')
             ->assertSee('data-action="edit-order"', false);
     }
 
-    public function test_order_requires_a_dish_and_a_user(): void
+    public function test_guest_cannot_order(): void
     {
-        $this->post('/create-order', ['dishes' => [$this->dishes[0]->id => '0']])
-            ->assertRedirect(route('orders.create'))
-            ->assertSessionHasErrors();
+        $this->post('/create-order', ['dishes' => [$this->dishes[0]->id => '1']])->assertRedirect(route('login'));
 
         $this->assertSame(0, Order::query()->count());
     }
 
-    public function test_user_already_bound_to_another_device_cannot_order(): void
+    public function test_order_requires_a_dish(): void
     {
-        $user = User::query()->create(['name' => 'Alice', 'creation_date' => '2026-01-01', 'cookie_hash' => hash('sha256', 'other')]);
-
-        $this->post('/create-order', ['user' => $user->id, 'dishes' => [$this->dishes[0]->id => '1']])
-            ->assertRedirect(route('orders.create'))
-            ->assertSessionHasErrors();
-
-        $this->assertSame(0, Order::query()->count());
-    }
-
-    public function test_device_cannot_order_for_someone_else(): void
-    {
-        $token = str_repeat('a', 64);
-        User::query()->create(['name' => 'Alice', 'creation_date' => '2026-01-01', 'cookie_hash' => hash('sha256', $token)]);
-        $bob = User::query()->create(['name' => 'Bob', 'creation_date' => '2026-01-01']);
-
-        $this->withUnencryptedCookie(DeviceAuth::COOKIE_NAME, $token)
-            ->post('/create-order', ['user' => $bob->id, 'dishes' => [$this->dishes[0]->id => '1']])
-            ->assertSessionHasErrors();
+        $this->assertFlashedError($this->actingAs(self::createUser('Alice'))
+            ->post('/create-order', ['dishes' => [$this->dishes[0]->id => '0']])
+            ->assertRedirect(route('orders.create')), 'Il faut commander au moins un plat');
 
         $this->assertSame(0, Order::query()->count());
     }
 
     public function test_only_owner_can_update_or_delete_order(): void
     {
-        $token = str_repeat('b', 64);
-        $alice = User::query()->create(['name' => 'Alice', 'creation_date' => '2026-01-01', 'cookie_hash' => hash('sha256', $token)]);
+        $alice = self::createUser('Alice');
+        $bob = self::createUser('Bob');
         $order = $alice->orders()->create(['perso' => '']);
         $order->dishes()->attach([$this->dishes[0]->id => ['quantity' => 1]]);
         $payload = ['dishes' => [$this->dishes[0]->id => '0', $this->dishes[1]->id => '3'], 'perso' => 'Bien cuit'];
 
-        // Appareil inconnu
-        $this->post("/edit-order/{$order->id}", $payload)->assertSessionHasErrors();
-        $this->post("/delete-order/{$order->id}")->assertSessionHasErrors();
+        // Invité
+        $this->post("/edit-order/{$order->id}", $payload)->assertRedirect(route('login'));
+
+        // Autre utilisateur
+        $this->assertFlashedError($this->actingAs($bob)->post("/edit-order/{$order->id}", $payload), 'Tu ne peux modifier que ta propre commande');
+        $this->assertFlashedError($this->actingAs($bob)->post("/delete-order/{$order->id}"), 'Tu ne peux supprimer que ta propre commande');
         $this->assertSame([$this->dishes[0]->id => 1], $order->fresh()->quantitiesByDish());
 
         // Propriétaire
-        $this->withUnencryptedCookie(DeviceAuth::COOKIE_NAME, $token)
-            ->post("/edit-order/{$order->id}", $payload)
-            ->assertSessionHas('success');
+        $this->actingAs($alice)->post("/edit-order/{$order->id}", $payload)->assertSessionHas('success');
         $this->assertSame([$this->dishes[0]->id => 0, $this->dishes[1]->id => 3], $order->fresh()->quantitiesByDish());
         $this->assertSame('Bien cuit', $order->fresh()->perso);
 
-        $this->withUnencryptedCookie(DeviceAuth::COOKIE_NAME, $token)
-            ->post("/delete-order/{$order->id}")
-            ->assertSessionHas('success');
+        $this->actingAs($alice)->post("/delete-order/{$order->id}")->assertSessionHas('success');
         $this->assertNull($order->fresh());
     }
 

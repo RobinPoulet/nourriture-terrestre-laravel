@@ -1,10 +1,8 @@
 {{--
-    @var \Illuminate\Support\Collection<\App\Models\User> $users
     @var \Illuminate\Support\Collection<\App\Models\Dish> $dishes
     @var string $dateMenu
     @var bool $canDisplayForm
     @var bool $isOpen
-    @var ?int $selectedUserId
 --}}
 @extends('layouts.app')
 
@@ -41,33 +39,14 @@
 
                     <!-- Qui commande -->
                     <div class="px-6 py-5">
-                        <label for="user-select"
-                               class="block text-[11px] font-bold uppercase tracking-widest
-                                      text-gray-400 dark:text-gray-500 mb-2.5">
-                            Qui commande ?
-                        </label>
-                        <div class="relative">
-                            <i class="bi bi-person-fill absolute left-3.5 top-1/2 -translate-y-1/2
-                                      text-indigo-400 dark:text-indigo-500 pointer-events-none text-sm"></i>
-                            <select id="user-select" name="user" required
-                                    class="appearance-none w-full pl-10 pr-9 py-3
-                                           bg-gray-50 dark:bg-gray-700
-                                           border-2 border-gray-200 dark:border-gray-600
-                                           text-gray-900 dark:text-gray-100 text-sm
-                                           rounded-xl transition-colors cursor-pointer
-                                           focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
-                                <option value="" disabled @selected($selectedUserId === null) hidden>
-                                    Sélectionner ton nom…
-                                </option>
-                                @foreach ($users as $user)
-                                    <option value="{{ $user->id }}" @selected((int) $user->id === (int) $selectedUserId)>
-                                        {{ $user->name }}
-                                    </option>
-                                @endforeach
-                            </select>
-                            <i class="bi bi-chevron-down absolute right-3.5 top-1/2 -translate-y-1/2
-                                      text-gray-400 text-xs pointer-events-none"></i>
-                        </div>
+                        <p class="text-[11px] font-bold uppercase tracking-widest
+                                  text-gray-400 dark:text-gray-500 mb-2.5">
+                            Commande au nom de
+                        </p>
+                        <p class="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            <i class="bi bi-person-fill text-indigo-400 dark:text-indigo-500"></i>
+                            {{ auth()->user()->name }}
+                        </p>
                     </div>
 
                     <!-- Plats -->

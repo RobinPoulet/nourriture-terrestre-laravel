@@ -6,8 +6,11 @@ use App\Enums\SettingKey;
 use App\Models\Announcement;
 use App\Models\Setting;
 use App\Models\User;
+use App\Notifications\SetPasswordNotification;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class AdminController extends Controller
@@ -32,31 +35,31 @@ class AdminController extends Controller
     // ── Utilisateurs ──────────────────────────────────────────────
 
     /**
-     * Créer un utilisateur (non admin)
+     * Créer un utilisateur (non admin) ; il pourra se connecter une fois l'invitation acceptée
      */
     public function createUser(Request $request): RedirectResponse
     {
-        $name = trim((string) $request->input('name', ''));
-        if ($name === '') {
-            return $this->back(error: "Il faut un nom pour l'utilisateur");
+        $validated = $this->validateUser($request);
+        if (is_string($validated)) {
+            return $this->back(error: $validated);
         }
 
-        $user = User::query()->create(['name' => $name, 'is_admin' => false, 'creation_date' => now()->toDateString()]);
+        $user = User::query()->create([...$validated, 'is_admin' => false, 'creation_date' => now()->toDateString()]);
 
         return $this->back("L'utilisateur $user->name a bien été créé");
     }
 
     /**
-     * Modifier le nom d'un utilisateur
+     * Modifier le nom et l'email d'un utilisateur
      */
     public function editUser(Request $request, User $user): RedirectResponse
     {
-        $name = trim((string) $request->input('name', ''));
-        if ($name === '') {
-            return $this->back(error: "Il faut un nom pour l'utilisateur");
+        $validated = $this->validateUser($request, $user);
+        if (is_string($validated)) {
+            return $this->back(error: $validated);
         }
 
-        $user->update(['name' => $name]);
+        $user->update($validated);
 
         return $this->back("L'utilisateur $user->name a bien été modifié");
     }
@@ -80,13 +83,20 @@ class AdminController extends Controller
     }
 
     /**
-     * Dissocie l'appareil d'un utilisateur (il pourra se ré-identifier en passant une commande)
+     * Envoie par email un lien pour choisir son mot de passe ; le lien est aussi affiché à l'admin
+     * pour pouvoir le transmettre autrement (messagerie…) si l'email n'arrive pas
      */
-    public function resetUserDevice(User $user): RedirectResponse
+    public function inviteUser(User $user): RedirectResponse
     {
-        $user->update(['cookie_hash' => null]);
+        if ($user->email === null) {
+            return $this->back(error: "Renseigne d'abord l'email de $user->name");
+        }
 
-        return $this->back("L'appareil de $user->name a été réinitialisé");
+        $token = Password::broker()->createToken($user);
+        $user->notify(new SetPasswordNotification($token, isInvitation: true));
+
+        return $this->back("Invitation envoyée à $user->email")
+            ->with('invitationLink', SetPasswordNotification::url($user, $token));
     }
 
     // ── Paramètres ────────────────────────────────────────────────
@@ -143,6 +153,24 @@ class AdminController extends Controller
         $announcement->update(['is_visible' => ! $announcement->is_visible]);
 
         return $this->back($announcement->is_visible ? 'Annonce affichée' : 'Annonce masquée');
+    }
+
+    /**
+     * Nom et email saisis, ou le message d'erreur
+     *
+     * @return array{name: string, email: ?string}|string
+     */
+    private function validateUser(Request $request, ?User $user = null): array|string
+    {
+        $name = trim((string) $request->input('name', ''));
+        $email = Str::lower(trim((string) $request->input('email', ''))) ?: null;
+
+        return match (true) {
+            $name === '' => "Il faut un nom pour l'utilisateur",
+            $email !== null && filter_var($email, FILTER_VALIDATE_EMAIL) === false => "L'email $email n'est pas valide",
+            $email !== null && User::query()->where('email', $email)->when($user, fn ($query) => $query->whereKeyNot($user->id))->exists() => "L'email $email est déjà utilisé",
+            default => ['name' => $name, 'email' => $email],
+        };
     }
 
     /**

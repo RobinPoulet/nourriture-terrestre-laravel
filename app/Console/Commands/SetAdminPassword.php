@@ -6,13 +6,12 @@ use App\Models\User;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Hash;
 
 /**
- * Définit le mot de passe d'un utilisateur et le passe administrateur
+ * Définit l'email (si besoin) et le mot de passe d'un utilisateur et le passe administrateur
  * (remplace scripts/set_admin_password.php)
  */
-#[Signature('admin:password {name : Nom de l\'utilisateur}')]
+#[Signature('admin:password {name : Nom de l\'utilisateur} {--email= : Email de connexion (obligatoire s\'il n\'en a pas encore)}')]
 #[Description('Définit le mot de passe d\'un utilisateur et le passe administrateur')]
 class SetAdminPassword extends Command
 {
@@ -27,6 +26,18 @@ class SetAdminPassword extends Command
             return self::FAILURE;
         }
 
+        $email = $this->option('email') !== null ? mb_strtolower(trim($this->option('email'))) : $user->email;
+        if ($email === null || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            $this->error('Email manquant ou invalide : précise-le avec --email=');
+
+            return self::FAILURE;
+        }
+        if (User::query()->where('email', $email)->whereKeyNot($user->id)->exists()) {
+            $this->error("L'email $email est déjà utilisé par un autre compte");
+
+            return self::FAILURE;
+        }
+
         $password = (string) $this->secret('Mot de passe ('.self::MIN_LENGTH.' caractères minimum)');
         if (mb_strlen($password) < self::MIN_LENGTH) {
             $this->error('Mot de passe trop court');
@@ -34,8 +45,8 @@ class SetAdminPassword extends Command
             return self::FAILURE;
         }
 
-        $user->update(['password_hash' => Hash::make($password), 'is_admin' => true]);
-        $this->info("Mot de passe défini, $user->name est administrateur.");
+        $user->update(['email' => $email, 'password' => $password, 'is_admin' => true]);
+        $this->info("Mot de passe défini, $user->name est administrateur (connexion avec $email).");
 
         return self::SUCCESS;
     }

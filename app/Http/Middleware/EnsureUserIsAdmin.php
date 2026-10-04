@@ -8,15 +8,17 @@ use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Un admin doit être connecté (et toujours admin en base), sinon redirection vers la connexion
+ * Un admin doit être connecté (et toujours admin en base) : invité → connexion, simple utilisateur → 403
  */
 class EnsureUserIsAdmin
 {
     public function handle(Request $request, Closure $next): Response
     {
-        if (! Auth::user()?->is_admin) {
-            return redirect()->route('admin.login');
+        if (! Auth::check()) {
+            return redirect()->guest(route('login'));
         }
+
+        abort_unless(Auth::user()->is_admin, Response::HTTP_FORBIDDEN);
 
         return $next($request);
     }

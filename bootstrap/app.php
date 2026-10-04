@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Middleware\EnsureUserIsAdmin;
-use App\Services\DeviceAuth;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -16,9 +15,6 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // HTTPS terminé par le reverse proxy de l'hébergeur
         $middleware->trustProxies(at: '*');
-
-        // Jeton d'appareil en clair, compatible avec les cookies posés par l'ancienne application
-        $middleware->encryptCookies(except: [DeviceAuth::COOKIE_NAME]);
 
         $middleware->alias(['admin' => EnsureUserIsAdmin::class]);
     })
