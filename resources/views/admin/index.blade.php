@@ -14,7 +14,7 @@
 
     <div class="flex items-center justify-between mb-8">
         <h1 class="text-2xl font-bold text-gray-800 dark:text-white">Administration</h1>
-        <form action="{{ route('admin.logout') }}" method="post">
+        <form action="{{ route('logout') }}" method="post">
             @csrf
             <button type="submit"
                     class="inline-flex items-center gap-2 text-sm font-medium
@@ -27,6 +27,20 @@
             </button>
         </form>
     </div>
+
+    @session('invitationLink')
+        <div class="mb-6 p-4 text-sm rounded-lg
+                    bg-indigo-50 dark:bg-indigo-900/20
+                    border border-indigo-200 dark:border-indigo-800
+                    text-indigo-800 dark:text-indigo-200">
+            <p class="font-semibold mb-2">
+                <i class="bi bi-link-45deg"></i> Lien d'invitation (à transmettre si l'email n'arrive pas) :
+            </p>
+            <input type="text" readonly value="{{ $value }}" onclick="this.select()"
+                   class="w-full rounded-lg border border-indigo-200 dark:border-indigo-700
+                          bg-white dark:bg-gray-800 text-xs text-gray-700 dark:text-gray-200 px-3 py-2">
+        </div>
+    @endsession
 
     <div class="flex gap-6 items-start">
 
@@ -73,6 +87,7 @@
                 <thead class="text-xs text-white uppercase bg-indigo-600 dark:bg-indigo-800">
                     <tr>
                         <th class="px-6 py-3 text-left">Nom</th>
+                        <th class="px-6 py-3 text-left">Compte</th>
                         <th class="px-6 py-3 text-left">Rôle</th>
                         <th class="px-6 py-3"></th>
                     </tr>
@@ -82,6 +97,19 @@
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                             <td class="px-6 py-3 font-medium text-gray-800 dark:text-gray-100">
                                 {{ $user->name }}
+                            </td>
+                            <td class="px-6 py-3">
+                                <span class="block text-gray-600 dark:text-gray-300">{{ $user->email ?? '—' }}</span>
+                                @if ($user->hasActivatedAccount())
+                                    <span class="text-xs text-green-600 dark:text-green-400">
+                                        <i class="bi bi-check-circle-fill"></i> Actif
+                                    </span>
+                                @else
+                                    <span class="text-xs text-amber-600 dark:text-amber-400">
+                                        <i class="bi bi-hourglass-split"></i>
+                                        {{ $user->email === null ? 'Email à renseigner' : 'Invitation à accepter' }}
+                                    </span>
+                                @endif
                             </td>
                             <td class="px-6 py-3">
                                 @if ($user->is_admin)
@@ -115,18 +143,20 @@
                                             <i class="bi bi-shield{{ $user->is_admin ? '-fill' : '' }}"></i>
                                         </button>
                                     </form>
-                                    <!-- Réinitialiser l'appareil -->
-                                    @if ($user->cookie_hash !== null)
-                                        <button type="button"
-                                                title="Réinitialiser l'appareil associé"
-                                                class="p-1.5
-                                                       text-sky-600 dark:text-sky-400
-                                                       hover:bg-sky-50 dark:hover:bg-sky-900/20
-                                                       rounded-lg border border-sky-300 dark:border-sky-700
-                                                       transition-colors"
-                                                onclick="confirmResetDevice({{ $user->id }})">
-                                            <i class="bi bi-phone"></i>
-                                        </button>
+                                    <!-- Invitation / lien de mot de passe -->
+                                    @if ($user->email !== null)
+                                        <form action="{{ route('admin.users.invite', $user) }}" method="post" class="inline-flex">
+                                            @csrf
+                                            <button type="submit"
+                                                    title="{{ $user->hasActivatedAccount() ? 'Envoyer un lien pour changer de mot de passe' : "Envoyer l'invitation" }}"
+                                                    class="p-1.5
+                                                           text-sky-600 dark:text-sky-400
+                                                           hover:bg-sky-50 dark:hover:bg-sky-900/20
+                                                           rounded-lg border border-sky-300 dark:border-sky-700
+                                                           transition-colors">
+                                                <i class="bi bi-envelope"></i>
+                                            </button>
+                                        </form>
                                     @endif
                                     <!-- Éditer -->
                                     <button class="btn-edit p-1.5
@@ -135,6 +165,7 @@
                                                    rounded-lg border border-amber-300 dark:border-amber-700
                                                    transition-colors"
                                             data-user-name="{{ $user->name }}"
+                                            data-user-email="{{ $user->email }}"
                                             data-user-id="{{ $user->id }}">
                                         <i class="bi bi-pencil-square"></i>
                                     </button>

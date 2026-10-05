@@ -54,7 +54,7 @@
                         border border-blue-200 dark:border-blue-800
                         text-blue-700 dark:text-blue-300 rounded-lg">
                 <i class="bi bi-info-circle-fill flex-shrink-0 mt-0.5"></i>
-                Passez une commande pour pouvoir voter sur les plats de votre assiette.
+                <span><a href="{{ route('login') }}" class="font-semibold underline">Connectez-vous</a> pour voter sur les plats de votre assiette.</span>
             </div>
         @elseif ($canVote && empty($userOrderedDishIds))
             <div class="mt-4 flex items-start gap-2 p-3 text-sm

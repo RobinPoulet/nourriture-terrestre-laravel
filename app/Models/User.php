@@ -2,40 +2,54 @@
 
 namespace App\Models;
 
+use App\Notifications\SetPasswordNotification;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Attributes\Table;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
 
 /**
- * Deux niveaux distincts :
- *  - identification de l'appareil (jeton aléatoire en cookie longue durée, voir App\Services\DeviceAuth) ;
- *  - authentification admin (nom + mot de passe, guard Laravel en session).
+ * Connexion par email + mot de passe (session, « se souvenir de moi »).
+ * Pas d'inscription libre : l'admin crée le compte et envoie une invitation pour choisir le mot de passe.
  *
  * @property int $id
  * @property string $name
+ * @property ?string $email
  * @property bool $is_admin
  * @property string $creation_date
- * @property ?string $cookie_hash
- * @property ?string $password_hash
+ * @property ?string $password
  */
 #[Table('users', timestamps: false)]
-#[Fillable(['name', 'is_admin', 'creation_date', 'cookie_hash', 'password_hash'])]
-#[Hidden(['cookie_hash', 'password_hash'])]
+#[Fillable(['name', 'email', 'is_admin', 'creation_date', 'password'])]
+#[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
-    /** @var string Colonne du hash de mot de passe (utilisée par Auth::attempt) */
-    protected $authPasswordName = 'password_hash';
-
-    /** @var string Pas de jeton "se souvenir de moi" dans la table */
-    protected $rememberTokenName = '';
+    use Notifiable;
 
     protected function casts(): array
     {
         return [
             'is_admin' => 'boolean',
+            'password' => 'hashed',
         ];
+    }
+
+    /**
+     * Compte prêt à l'emploi : email renseigné et mot de passe choisi
+     */
+    public function hasActivatedAccount(): bool
+    {
+        return $this->email !== null && $this->password !== null;
+    }
+
+    /**
+     * Lien « mot de passe oublié »
+     */
+    public function sendPasswordResetNotification(#[\SensitiveParameter] $token): void
+    {
+        $this->notify(new SetPasswordNotification($token));
     }
 
     /**

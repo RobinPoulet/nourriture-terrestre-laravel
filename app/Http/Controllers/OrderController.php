@@ -5,18 +5,17 @@ namespace App\Http\Controllers;
 use App\Enums\SettingKey;
 use App\Models\Order;
 use App\Models\Setting;
-use App\Models\User;
-use App\Services\DeviceAuth;
 use App\Services\MenuService;
 use App\Support\MenuCalendar;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class OrderController extends Controller
 {
-    public function __construct(private readonly MenuService $menus, private readonly DeviceAuth $device) {}
+    public function __construct(private readonly MenuService $menus) {}
 
     /**
      * Commandes du jour et récapitulatif
@@ -35,7 +34,7 @@ class OrderController extends Controller
             'isOpen' => $menu->is_open,
             'tabTotalQuantity' => Order::totalQuantityByDish($today),
             'smsSent' => $menu->is_open ? $menu->smsResponse?->summary() : null,
-            'selectedUserId' => $this->device->user()?->id,
+            'selectedUserId' => Auth::id(),
             'canDisplayForm' => $naturallyOpen || Setting::isEnabled(SettingKey::ForceOpenForm),
             'formDeadlineTs' => $naturallyOpen ? MenuCalendar::orderDeadlineTimestamp() : null,
         ]);
@@ -49,13 +48,11 @@ class OrderController extends Controller
         $menu = $this->menus->current();
 
         return view('orders.create', [
-            'users' => User::query()->orderBy('name')->get(),
             'dishes' => $menu->dishes,
             'isOpen' => $menu->is_open,
             'dateMenu' => $menu->creation_date,
             'canDisplayForm' => MenuCalendar::canDisplayOrderForm($menu->creation_date)
                 || Setting::isEnabled(SettingKey::ForceOpenForm),
-            'selectedUserId' => $this->device->user()?->id,
         ]);
     }
 
@@ -65,46 +62,15 @@ class OrderController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $dishes = $this->dishQuantities($request);
-        $userId = $request->input('user');
-
-        $errors = [];
         if (! $this->hasAtLeastOneDish($dishes)) {
-            $errors[] = 'Il faut commander au moins un plat';
-        }
-        if ($userId === null) {
-            $errors[] = 'Merci de sélectionner un nom';
-        }
-        if (! empty($errors)) {
-            return redirect()->route('orders.create')->withErrors($errors);
+            return redirect()->route('orders.create')->withErrors(['Il faut commander au moins un plat']);
         }
 
-        $user = User::query()->find((int) $userId);
-        $deviceUser = $this->device->user();
-        $isSameUser = $deviceUser !== null && $user !== null && (int) $deviceUser->id === (int) $user->id;
-
-        $error = match (true) {
-            $user === null => 'Utilisateur introuvable',
-            // Cet appareil est déjà associé à quelqu'un d'autre : on ne laisse pas "réclamer" un autre compte
-            $deviceUser !== null && ! $isSameUser => "Cet appareil est déjà associé à $deviceUser->name",
-            // L'utilisateur est déjà identifié sur une autre machine
-            $user->cookie_hash !== null && ! $isSameUser => 'Utilisateur déjà connecté sur une autre machine',
-            default => null,
-        };
-        if ($error !== null) {
-            return redirect()->route('orders.create')->withErrors([$error]);
-        }
-
+        $user = $request->user();
         DB::transaction(function () use ($user, $request, $dishes) {
             $order = $user->orders()->create(['perso' => (string) $request->input('perso', '')]);
             $order->dishes()->attach($this->pivotData($dishes));
         });
-
-        // Premier enregistrement → nouveau jeton ; sinon on prolonge le cookie existant
-        if ($isSameUser) {
-            $this->device->refresh();
-        } else {
-            $this->device->remember($user);
-        }
 
         return redirect()->route('orders.index')->with('success', "Ta commande a bien été enregistrée $user->name");
     }
@@ -150,13 +116,11 @@ class OrderController extends Controller
     }
 
     /**
-     * La commande appartient-elle à l'utilisateur identifié sur cet appareil ?
+     * La commande appartient-elle à l'utilisateur connecté ?
      */
     private function ownsOrder(Order $order): bool
     {
-        $deviceUserId = $this->device->user()?->id;
-
-        return $deviceUserId !== null && (int) $deviceUserId === (int) $order->user_id;
+        return (int) Auth::id() === (int) $order->user_id;
     }
 
     /**

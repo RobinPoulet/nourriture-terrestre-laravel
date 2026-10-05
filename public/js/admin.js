@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const userModalEl    = document.getElementById('addUserModal');
     const userNameInput  = document.getElementById('userName');
+    const userEmailInput = document.getElementById('userEmail');
     const userValidateBtn = document.getElementById('user-validate');
 
     const userModal = new Modal(userModalEl, {
@@ -40,6 +41,7 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('addUserModalLabel').textContent = 'Ajouter un utilisateur';
         document.getElementById('form-user').action = completeUrl + '/admin/create-user';
         userNameInput.value = '';
+        userEmailInput.value = '';
         userValidateBtn.textContent = 'Ajouter';
         const alert = document.getElementById('alert-user-modal');
         alert.className = '';
@@ -59,6 +61,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('form-user').action = `${completeUrl}/admin/edit-user/${userId}`;
                 document.getElementById('addUserModalLabel').textContent = 'Éditer un utilisateur';
                 userNameInput.value = userName;
+                userEmailInput.value = this.getAttribute('data-user-email') || '';
                 userValidateBtn.textContent = 'Modifier';
             } else {
                 resetUserModal();
@@ -141,13 +144,6 @@ function confirmDeleteAnnouncement(id) {
     const completeUrl = document.getElementById('complete-url').value;
     if (confirm('Êtes-vous sûr de vouloir supprimer cette annonce ?')) {
         postTo(`${completeUrl}/admin/delete-announcement/${id}`);
-    }
-}
-
-function confirmResetDevice(userId) {
-    const completeUrl = document.getElementById('complete-url').value;
-    if (confirm("Réinitialiser l'appareil de cet utilisateur ? Il sera ré-associé à sa prochaine commande.")) {
-        postTo(`${completeUrl}/admin/reset-device/${userId}`);
     }
 }
 

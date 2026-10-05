@@ -51,6 +51,7 @@
                 <!-- Séparateur -->
                 <div class="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-2"></div>
 
+                @include('partials.account')
                 @include('partials.theme-toggle')
             </nav>
 
@@ -87,6 +88,9 @@
                         </a>
                     </li>
                 @endforeach
+                <li class="pt-2 mt-1 border-t border-gray-100 dark:border-gray-700">
+                    @include('partials.account')
+                </li>
             </ul>
         </div>
     </div>

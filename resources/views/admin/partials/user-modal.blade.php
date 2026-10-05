@@ -34,6 +34,17 @@
                                       text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500
                                       block w-full p-2.5">
                     </div>
+                    <div>
+                        <label for="userEmail" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Email <span class="font-normal text-gray-400">— pour l'invitation et la connexion</span>
+                        </label>
+                        <input type="email" id="userEmail" name="email"
+                               class="bg-gray-50 dark:bg-gray-700
+                                      border border-gray-300 dark:border-gray-600
+                                      text-gray-900 dark:text-gray-100
+                                      text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500
+                                      block w-full p-2.5">
+                    </div>
                 </div>
                 <!-- Footer -->
                 <div class="flex items-center justify-end gap-3 p-5
